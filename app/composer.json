@@ -1,0 +1,12 @@
+{
+  "name": "vuviy/shoping_cart",
+  "description": "shoping_cart",
+  "require": {
+
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  }
+}

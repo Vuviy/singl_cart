@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Core\Singleton;
+use App\DTO\CartItem;
 use App\Repositories\ProductRepository;
+use RuntimeException;
 
 class Cart extends Singleton
 {
@@ -29,14 +31,9 @@ class Cart extends Singleton
     private int $tax = 0;
 
     /**
-     * @var Product[]
+     * @var CartItem[]
      */
-    private array $products = [];
-
-    /**
-     * @var array
-     */
-    private array $countProducts = [];
+    private array $items = [];
 
     /**
      * @var Coupon[]
@@ -44,47 +41,62 @@ class Cart extends Singleton
     private array $coupons = [];
 
     /**
-     * @param Product $product
+     * @param CartItem $cartItem
      * @return void
      */
-    public function addProduct(Product $product): void
+    public function addItem(CartItem $cartItem): void
     {
-        if ($this->checkExistingProduct($product)) {
-            if (array_key_exists($product->getId(), $this->products)) {
-                $this->countProducts[$product->getId()] += 1;
-                $this->updateSubtotal();
-                $this->updateTotal();
-            } else {
-                $this->products[$product->getId()] = $product;
-                $this->countProducts[$product->getId()] = 1;
-                $this->updateSubtotal();
-                $this->updateTotal();
-            }
+
+        $this->checkExistingProduct($cartItem->productId);
+
+        if (array_key_exists($cartItem->productId, $this->items)) {
+            $this->items[$cartItem->productId]->quantity += $cartItem->quantity;
+            $this->updateSubtotal();
+            $this->updateTotal();
+        } else {
+            $this->items[$cartItem->productId] = $cartItem;
+            $this->updateSubtotal();
+            $this->updateTotal();
         }
     }
 
-    private function checkExistingProduct(Product $product): bool
+    private function checkExistingProduct(string $productId): void
     {
-//        переробити по нормальному
+//        переробити по нормальному ак не має бути
         $storage = new Storage();
         $repo = new ProductRepository($storage);
 //        переробити по нормальному
-        $product = $repo->findById($product->getId());
+        $product = $repo->findById($productId);
 
-        if (null === $product || $product->getQuantity() <= 0) {
-            return false;
+
+        if (null === $product) {
+            throw new RuntimeException("No product");
         }
-        return true;
+
+        if ($product->getQuantity() === 0) {
+            throw new RuntimeException("Not enough stock");
+        }
     }
 
     /**
      * @param string $productId
      * @return void
      */
-    public function removeProduct(string $productId): void
+    public function removeItem(string $productId): void
     {
-        unset($this->products[$productId]);
-        unset($this->countProducts[$productId]);
+        unset($this->items[$productId]);
+    }
+
+
+    public function clear()
+    {
+        $this->items = [];
+        $this->subtotal = 0;
+        $this->total = 0;
+        $this->cost_shipping = 0;
+        $this->tax = 0;
+        $this->coupons = [];
+
     }
 
     /**
@@ -93,28 +105,32 @@ class Cart extends Singleton
      */
     public function decrementCountOfProducts(string $productId): void
     {
-        if (1 === $this->countProducts[$productId]) {
-            $this->removeProduct($productId);
+        if (1 === $this->items[$productId]->quantity) {
+            $this->removeItem($productId);
         } else {
-            $this->countProducts[$productId]--;
+            $this->items[$productId]->quantity -= 1;
         }
     }
 
     /**
-     * @return Product[]
+     * @return CartItem[]
      */
-    public function getProducts(): array
+    public function getItems(): array
     {
-        return $this->products;
+        return $this->items;
     }
 
 
     /**
-     * @return array
+     * @return int
      */
-    public function getCountProducts(): array
+    public function getCountItems(): int
     {
-        return $this->countProducts;
+        $count = 0;
+        foreach ($this->items as $item) {
+            $count += $item->quantity;
+        }
+        return $count;
     }
 
     /**
@@ -123,7 +139,7 @@ class Cart extends Singleton
      */
     public function getCountOfProduct(string $productId): int
     {
-        return $this->countProducts[$productId];
+        return $this->items[$productId]->quantity;
     }
 
     /**
@@ -132,8 +148,8 @@ class Cart extends Singleton
     public function updateSubtotal(): void
     {
         $this->subtotal = 0;
-        foreach ($this->products as $productId => $product) {
-            $this->subtotal += $this->getCountOfProduct($productId) * $product->getPrice();
+        foreach ($this->items as $productId => $cartItem) {
+            $this->subtotal += $this->getCountOfProduct($productId) * $cartItem->price;
         }
     }
 
@@ -159,8 +175,8 @@ class Cart extends Singleton
     public function updateTotal(): void
     {
         $this->total = 0;
-        foreach ($this->products as $productId => $product) {
-            $price = $product->getPrice();
+        foreach ($this->items as $productId => $cartItem) {
+            $price = $cartItem->price;
             $quantity = $this->getCountOfProduct($productId);
 
             $taxAmount = intdiv($price * $this->tax, 100);

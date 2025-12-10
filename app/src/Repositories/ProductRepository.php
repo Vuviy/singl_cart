@@ -5,9 +5,9 @@ namespace App\Repositories;
 use App\Services\Product;
 use App\Services\Storage;
 
-class ProductRepository
+readonly class ProductRepository
 {
-    public function __construct( private readonly Storage $storage)
+    public function __construct( private Storage $storage)
     {
     }
 
